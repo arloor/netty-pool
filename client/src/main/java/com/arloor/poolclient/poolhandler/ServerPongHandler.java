@@ -1,34 +1,33 @@
-package com.arloor.poolclient;
+package com.arloor.poolclient.poolhandler;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
-
+import com.arloor.poolcommon.poolhandler.PoolHandler;
 
 /**
  * 处理服务端的PONG心跳
  * 要放在pipeline的最开始！！
  */
-public class ServerPongHandler extends ChannelInboundHandlerAdapter {
+public class ServerPongHandler extends ChannelInboundHandlerAdapter implements  PoolHandler{
 
     private static final byte[] PONG = "pong".getBytes();
-    private static final int PING_INTERVAL = 100000;//单位s
+    private static final int PING_INTERVAL = 5;//单位s
     private static final int fazhi = 2*PING_INTERVAL*1000; //n倍于INTERVAL
 
     private static final Logger log = LoggerFactory.getLogger(ServerPongHandler.class);
 
     private long lastPing = -1;
-    private long lastPong = -1;
+    private volatile long  lastPong = -1;
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        log.info("channel active AND start PING");
+        log.info("channel active AND start PING. ID:" + ctx.channel().id());
         //设置定时任务ping,以后会每隔一段时间就发送PING，直到某个PING发送失败
         setDelayPing(ctx);
         //设置最后一次响应时间为该CHannel的active时间，没问题。
@@ -60,8 +59,6 @@ public class ServerPongHandler extends ChannelInboundHandlerAdapter {
                 //走到这里就说明是PING
                 lastPong=System.currentTimeMillis();
                 log.info("receive PONG");
-                //从ctx发送PONG，确保不走后面的ChannelOutBounder
-
             } else {
                 ctx.fireChannelRead(msg);
             }
@@ -89,29 +86,37 @@ public class ServerPongHandler extends ChannelInboundHandlerAdapter {
      * @param ctx
      */
     private void sendPing(ChannelHandlerContext ctx) {
-        ByteBuf PING = ByteBufAllocator.DEFAULT.buffer().writeBytes("ping".getBytes());
-        ctx.writeAndFlush(PING).addListener(future -> {
-            if (future.isSuccess()) {
-                 lastPing=System.currentTimeMillis();
-                log.info("PING success");
-                setDelayPing(ctx);
-            } else {
-                log.error("PING failed!", future.cause());
+        if(ctx.channel().isActive()){
+            if(hasHeartbeat()){//如果pong正常，则继续ping
+                ByteBuf PING = ByteBufAllocator.DEFAULT.buffer().writeBytes("ping".getBytes());
+                ctx.writeAndFlush(PING).addListener(future -> {
+                    if (future.isSuccess()) {
+                        lastPing=System.currentTimeMillis();
+                        log.info("PING success");
+                        setDelayPing(ctx);
+                    } else {//ping失败则直接关闭channel
+                        log.error("PING failed!", future.cause());
+                        ctx.close();
+                    }
+                });
+            }else{//如果很久没收到pong，则就在这里关闭ctx；
+                ctx.close();
             }
-        });
+        }
     }
 
     /**
      * 根据lastPong判断是否存活
      * @return
      */
-    public boolean isChannelActive(){
-        if(System.currentTimeMillis() - lastPong > fazhi){
-            return false;
-        }else {
-            return true;
-        }
+    public boolean hasHeartbeat(){
+        return System.currentTimeMillis() - lastPong <= fazhi;
     }
 
 
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        log.error("channel read error!",cause);
+        ctx.close();
+    }
 }
