@@ -25,7 +25,7 @@ public class MainClient {
 
     private static final EventLoopGroup bossGroup = new NioEventLoopGroup(1);
     private static final EventLoopGroup workerGroup = new NioEventLoopGroup();
-    private static final String POOL_SERVER_ADDR = "127.0.0.1";
+    private static final String POOL_SERVER_ADDR = "api.arloor.com";
     private static final int POOL_SERVER_PORT = 88;
 
     private static final Logger log = LoggerFactory.getLogger(MainClient.class);

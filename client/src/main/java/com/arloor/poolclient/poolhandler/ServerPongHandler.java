@@ -17,7 +17,7 @@ import com.arloor.poolcommon.poolhandler.PoolHandler;
 public class ServerPongHandler extends ChannelInboundHandlerAdapter implements  PoolHandler{
 
     private static final byte[] PONG = "pong".getBytes();
-    private static final int PING_INTERVAL = 5;//单位s
+    private static final int PING_INTERVAL = 60;//单位s
     private static final int fazhi = 2*PING_INTERVAL*1000; //n倍于INTERVAL
 
     private static final Logger log = LoggerFactory.getLogger(ServerPongHandler.class);
